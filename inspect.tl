@@ -1,4 +1,10 @@
--- inspect.tl
+-- ============================================================
+-- inspect.tl — human-readable representations of tables
+-- ============================================================
+
+-- ----------------------------------------------------------
+-- Module declaration
+-- ----------------------------------------------------------
 local record inspect
    _VERSION: string
    _URL: string
@@ -14,6 +20,13 @@ local record inspect
       newline: string
       indent: string
       process: ProcessFunction
+   end
+
+   record NormalizedOptions
+      depth: integer
+      newline: string
+      indent: string
+      process: inspect.ProcessFunction
    end
 end
 
@@ -47,6 +60,9 @@ inspect._LICENSE = [[
 inspect.KEY       = setmetatable({}, {__tostring = function(): string return 'inspect.KEY' end})
 inspect.METATABLE = setmetatable({}, {__tostring = function(): string return 'inspect.METATABLE' end})
 
+-- ----------------------------------------------------------
+-- Local aliases
+-- ----------------------------------------------------------
 local tostring = tostring
 local rep = string.rep
 local match = string.match
@@ -54,7 +70,12 @@ local char = string.char
 local gsub = string.gsub
 local fmt = string.format
 
--- String buffer support (LuaJIT optimization)
+-- ==========================================================
+-- Section 1: Buffer compatibility
+-- ----------------------------------------------------------
+-- Uses LuaJIT string.buffer when available, falls back to a
+-- table-based accumulator otherwise.
+-- ==========================================================
 local sbavailable, stringbuffer = pcall(require, "string.buffer")
 local buffnew: function(): table
 local puts: function(table, string)
@@ -81,16 +102,11 @@ else
   end
 end
 
-local _rawget: function(table, any): any
-if rawget then
-   _rawget = rawget
-else
-   _rawget = function(t: table, k: any): any return t[k] end
-end
-
-local function rawpairs(t: table): function, table, nil
-   return next, t, nil
-end
+-- ==========================================================
+-- Section 2: String formatting utilities
+-- ----------------------------------------------------------
+-- smartQuote, escape, isIdentifier, luaKeywords
+-- ==========================================================
 
 -- Apostrophizes the string if it has quotes, but not aphostrophes
 -- Otherwise, it returns a regular quoted string
@@ -132,6 +148,23 @@ local function isIdentifier(str: any): boolean
    return str is string
     and not not str:match("^[_%a][_%a%d]*$")
     and not luaKeywords[str]
+end
+
+-- ==========================================================
+-- Section 3: Table introspection
+-- ----------------------------------------------------------
+-- _rawget, rawpairs, isSequenceKey, sortKeys, getKeys
+-- ==========================================================
+
+local _rawget: function(table, any): any
+if rawget then
+   _rawget = rawget
+else
+   _rawget = function(t: table, k: any): any return t[k] end
+end
+
+local function rawpairs(t: table): function, table, nil
+   return next, t, nil
 end
 
 local flr = math.floor
@@ -181,6 +214,13 @@ local function getKeys(t: table): {any}, integer, integer
    return keys, keysLen, seqLen
 end
 
+-- ==========================================================
+-- Section 4: Cycle detection
+-- ----------------------------------------------------------
+-- countCycles walks the table tree (respecting the depth
+-- limit) and records how many times each table appears.
+-- ==========================================================
+
 local function countCycles(x: any, cycles: {any:integer}, depth: integer): nil
    if x is table then
       if cycles[x] then
@@ -197,6 +237,30 @@ local function countCycles(x: any, cycles: {any:integer}, depth: integer): nil
       end
    end
 end
+
+-- ==========================================================
+-- Section 5: Options normalization
+-- ----------------------------------------------------------
+-- normalizeOptions takes user-supplied options (which may be
+-- nil or partially filled) and returns a fully resolved
+-- NormalizedOptions record with all defaults applied.
+-- ==========================================================
+
+local function normalizeOptions(options: inspect.Options): inspect.NormalizedOptions
+   options = options or {}
+   return {
+      depth   = options.depth   or (math.huge as integer),
+      newline = options.newline or '\n',
+      indent  = options.indent  or '  ',
+      process = options.process,
+   } as inspect.NormalizedOptions
+end
+
+-- ==========================================================
+-- Section 6: Process / transform
+-- ----------------------------------------------------------
+-- makePath, processRecursive
+-- ==========================================================
 
 local function makePath(path: {any}, a: any, b: any): {any}
    local newPath: {any} = {}
@@ -238,7 +302,13 @@ local function processRecursive(process: inspect.ProcessFunction,
    return processed
 end
 
--------------------------------------------------------------------
+-- ==========================================================
+-- Section 7: Inspector renderer
+-- ----------------------------------------------------------
+-- The Inspector record holds rendering state (buffer, cycle
+-- table, id counter, formatting options) and writes the
+-- human-readable output via putValue / tabify / getId.
+-- ==========================================================
 
 local type Inspector = record
    buf: table
@@ -335,32 +405,32 @@ function Inspector:putValue(v: any)
    end
 end
 
--------------------------------------------------------------------
+-- ==========================================================
+-- Section 8: Public API
+-- ----------------------------------------------------------
+-- inspect.inspect(root, options) and the __call metamethod
+-- that lets you use inspect(root, options) directly.
+-- ==========================================================
 
 
 function inspect.inspect(root: any, options: inspect.Options): string
-   options       = options or {}
+   local opts = normalizeOptions(options)
 
-   local depth: integer  = options.depth   or (math.huge as integer)
-   local newline: string = options.newline or '\n'
-   local indent: string  = options.indent  or '  '
-   local process: inspect.ProcessFunction = options.process
-
-   if process then
-      root = processRecursive(process, root, {}, {})
+   if opts.process then
+      root = processRecursive(opts.process, root, {}, {})
    end
 
    local cycles = {}
-   countCycles(root, cycles, depth)
+   countCycles(root, cycles, opts.depth)
 
    local inspector = setmetatable({
       buf              = buffnew(),
       ids              = {},
       cycles           = cycles,
-      depth            = depth,
+      depth            = opts.depth,
       level            = 0,
-      newline          = newline,
-      indent           = indent,
+      newline          = opts.newline,
+      indent           = opts.indent,
    } as Inspector, Inspector_mt)
 
    inspector:putValue(root)

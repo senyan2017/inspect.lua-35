@@ -461,6 +461,75 @@ describe( 'inspect', function()
     end)
   end)
 
+  describe('options combinations', function()
+    it('combines depth, newline, and indent options together', function()
+      local t = {a = {b = {c = 1}}}
+      assert.equal("{@>>>a = {@>>>>>>b = {...}@>>>}@}", inspect(t, {depth = 2, newline = '@', indent = '>>>'}))
+    end)
+
+    it('combines depth 0 with custom newline and indent', function()
+      local t = {a = 1}
+      assert.equal("{...}", inspect(t, {depth = 0, newline = '@', indent = '>>>'}))
+    end)
+
+    it('combines process with depth limit', function()
+      local t = {1, 2, {3, 4}}
+      local double = function(item) return type(item) == 'number' and item * 2 or item end
+      assert.equal("{ 2, 4, {...} }", inspect(t, {process = double, depth = 1}))
+    end)
+
+    it('combines process with custom newline', function()
+      local t = {a = 1, b = 2}
+      local identity = function(item) return item end
+      assert.equal("{@  a = 1,@  b = 2@}", inspect(t, {process = identity, newline = '@'}))
+    end)
+
+    it('uses defaults when options table is empty', function()
+      local t = {a = 1}
+      assert.equal("{\n  a = 1\n}", inspect(t, {}))
+    end)
+  end)
+
+  describe('cycle references', function()
+    it('handles a table that references itself at the top level', function()
+      local t = {1, 2}
+      t.self = t
+      assert.equal('<1>{ 1, 2,\n  self = <table 1>\n}', inspect(t))
+    end)
+
+    it('handles two tables that reference each other', function()
+      local a = {name = 'a'}
+      local b = {name = 'b'}
+      a.link = b
+      b.link = a
+      assert.equal('<1>{\n  link = <2>{\n    link = <table 1>,\n    name = "b"\n  },\n  name = "a"\n}', inspect(a))
+    end)
+
+    it('handles a cycle with depth limit cutting the cycle', function()
+      local t = {1, 2}
+      t.self = t
+      assert.equal('{ 1, 2,\n  self = <table 1>\n}', inspect(t, {depth = 1}))
+    end)
+
+    it('handles deeply nested self-reference', function()
+      local t = {a = {b = {}}}
+      t.a.b.root = t
+      assert.equal('<1>{\n  a = {\n    b = {\n      root = <table 1>\n    }\n  }\n}', inspect(t))
+    end)
+
+    it('handles multiple references to the same subtable', function()
+      local sub = {1, 2, 3}
+      local t = {sub, sub, sub}
+      assert.equal('{ <1>{ 1, 2, 3 }, <table 1>, <table 1> }', inspect(t))
+    end)
+
+    it('handles a table appearing as both key and value', function()
+      local sub = {1}
+      local t = {[sub] = sub}
+      assert.equal('{\n  [<1>{ 1 }] = <table 1>\n}', inspect(t))
+    end)
+  end)
+
   it('allows changing the global tostring', function()
     local save = _G.tostring
     _G.tostring = inspect

@@ -1,5 +1,18 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local math = _tl_compat and _tl_compat.math or math; local pcall = _tl_compat and _tl_compat.pcall or pcall; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local type = type
-local inspect = { Options = {} }
+
+
+
+
+
+
+local inspect = { Options = {}, NormalizedOptions = {} }
+
+
+
+
+
+
+
 
 
 
@@ -47,12 +60,20 @@ inspect._LICENSE = [[
 inspect.KEY = setmetatable({}, { __tostring = function() return 'inspect.KEY' end })
 inspect.METATABLE = setmetatable({}, { __tostring = function() return 'inspect.METATABLE' end })
 
+
+
+
 local tostring = tostring
 local rep = string.rep
 local match = string.match
 local char = string.char
 local gsub = string.gsub
 local fmt = string.format
+
+
+
+
+
 
 
 local sbavailable, stringbuffer = pcall(require, "string.buffer")
@@ -81,16 +102,11 @@ else
    end
 end
 
-local _rawget
-if rawget then
-   _rawget = rawget
-else
-   _rawget = function(t, k) return t[k] end
-end
 
-local function rawpairs(t)
-   return next, t, nil
-end
+
+
+
+
 
 
 
@@ -132,6 +148,23 @@ local function isIdentifier(str)
    return type(str) == "string" and
    not not str:match("^[_%a][_%a%d]*$") and
    not luaKeywords[str]
+end
+
+
+
+
+
+
+
+local _rawget
+if rawget then
+   _rawget = rawget
+else
+   _rawget = function(t, k) return t[k] end
+end
+
+local function rawpairs(t)
+   return next, t, nil
 end
 
 local flr = math.floor
@@ -181,6 +214,13 @@ local function getKeys(t)
    return keys, keysLen, seqLen
 end
 
+
+
+
+
+
+
+
 local function countCycles(x, cycles, depth)
    if type(x) == "table" then
       if cycles[x] then
@@ -197,6 +237,30 @@ local function countCycles(x, cycles, depth)
       end
    end
 end
+
+
+
+
+
+
+
+
+
+local function normalizeOptions(options)
+   options = options or {}
+   return {
+      depth = options.depth or (math.huge),
+      newline = options.newline or '\n',
+      indent = options.indent or '  ',
+      process = options.process,
+   }
+end
+
+
+
+
+
+
 
 local function makePath(path, a, b)
    local newPath = {}
@@ -237,6 +301,12 @@ local function processRecursive(process,
    end
    return processed
 end
+
+
+
+
+
+
 
 
 
@@ -338,29 +408,29 @@ end
 
 
 
+
+
+
+
+
 function inspect.inspect(root, options)
-   options = options or {}
+   local opts = normalizeOptions(options)
 
-   local depth = options.depth or (math.huge)
-   local newline = options.newline or '\n'
-   local indent = options.indent or '  '
-   local process = options.process
-
-   if process then
-      root = processRecursive(process, root, {}, {})
+   if opts.process then
+      root = processRecursive(opts.process, root, {}, {})
    end
 
    local cycles = {}
-   countCycles(root, cycles, depth)
+   countCycles(root, cycles, opts.depth)
 
    local inspector = setmetatable({
       buf = buffnew(),
       ids = {},
       cycles = cycles,
-      depth = depth,
+      depth = opts.depth,
       level = 0,
-      newline = newline,
-      indent = indent,
+      newline = opts.newline,
+      indent = opts.indent,
    }, Inspector_mt)
 
    inspector:putValue(root)
