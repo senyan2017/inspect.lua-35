@@ -17,6 +17,8 @@ local inspect = { Options = {} }
 
 
 
+
+
 inspect._VERSION = 'inspect.lua 3.1.0'
 inspect._URL = 'http://github.com/kikito/inspect.lua'
 inspect._DESCRIPTION = 'human-readable representations of tables'
@@ -162,7 +164,7 @@ local function sortKeys(a, b)
    return dta == dtb and ta < tb or dta < dtb
 end
 
-local function getKeys(t)
+local function getKeys(t, comparator)
 
    local seqLen = 1
    while _rawget(t, seqLen) ~= nil do
@@ -177,7 +179,14 @@ local function getKeys(t)
          keys[keysLen] = k
       end
    end
-   table.sort(keys, sortKeys)
+
+
+
+   if type(comparator) == "function" then
+      table.sort(keys, comparator)
+   elseif comparator ~= false then
+      table.sort(keys, sortKeys)
+   end
    return keys, keysLen, seqLen
 end
 
@@ -251,6 +260,7 @@ local Inspector = {}
 
 
 
+
 local Inspector_mt = { __index = Inspector }
 
 local function tabify(inspector)
@@ -286,7 +296,7 @@ function Inspector:putValue(v)
       else
          if self.cycles[t] > 1 then puts(buf, fmt('<%d>', self:getId(t))) end
 
-         local keys, keysLen, seqLen = getKeys(t)
+         local keys, keysLen, seqLen = getKeys(t, self.sortKeys)
 
          puts(buf, '{')
          self.level = self.level + 1
@@ -361,6 +371,7 @@ function inspect.inspect(root, options)
       level = 0,
       newline = newline,
       indent = indent,
+      sortKeys = options.sortKeys,
    }, Inspector_mt)
 
    inspector:putValue(root)

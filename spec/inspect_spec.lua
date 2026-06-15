@@ -359,6 +359,78 @@ describe( 'inspect', function()
       end)
     end)
 
+    describe('the sortKeys option', function()
+
+      local reverse = function(a, b) return a > b end
+
+      it('sorts keys with the default comparator when not provided', function()
+        assert.equals("{\n  a = 1,\n  b = 2,\n  c = 3\n}", inspect({c = 3, a = 1, b = 2}))
+      end)
+
+      it('treats sortKeys = true as a request for the default sort', function()
+        assert.equals(inspect({c = 3, a = 1, b = 2}),
+                      inspect({c = 3, a = 1, b = 2}, {sortKeys = true}))
+      end)
+
+      it('sorts the keys using a custom comparator', function()
+        assert.equals(unindent([[
+          {
+            c = 3,
+            b = 2,
+            a = 1
+          }
+        ]]), inspect({a = 1, b = 2, c = 3}, {sortKeys = reverse}))
+      end)
+
+      it('applies the custom comparator to nested dictionary tables', function()
+        assert.equals(unindent([[
+          {
+            c = 3,
+            b = {
+              z = 3,
+              y = 2,
+              x = 1
+            },
+            a = 1
+          }
+        ]]), inspect({a = 1, b = {x = 1, y = 2, z = 3}, c = 3}, {sortKeys = reverse}))
+      end)
+
+      it('does not sort the keys when sortKeys is false', function()
+        local t = {a = 1, b = 2, c = 3, d = 4}
+        -- With sorting disabled the keys keep their raw `pairs` order, so the
+        -- expected output is built using that very same traversal order.
+        local parts = {}
+        for k in next, t do parts[#parts + 1] = k .. " = " .. tostring(t[k]) end
+        local expected = "{\n  " .. table.concat(parts, ",\n  ") .. "\n}"
+        assert.equals(expected, inspect(t, {sortKeys = false}))
+      end)
+
+      it('combines with the indent option', function()
+        assert.equals("{\n..c = 3,\n..b = 2,\n..a = 1\n}",
+                      inspect({a = 1, b = 2, c = 3}, {sortKeys = reverse, indent = '..'}))
+      end)
+
+      it('combines with the depth option', function()
+        assert.equals(unindent([[
+          {
+            c = {...},
+            a = 1
+          }
+        ]]), inspect({c = {x = 1}, a = 1}, {sortKeys = reverse, depth = 1}))
+      end)
+
+      it('combines with the process option', function()
+        local removeKeyB = function(item) if item ~= 'b' then return item end end
+        assert.equals(unindent([[
+          {
+            c = 3,
+            a = 1
+          }
+        ]]), inspect({a = 1, b = 2, c = 3}, {sortKeys = reverse, process = removeKeyB}))
+      end)
+    end)
+
     describe('metatables', function()
 
       it('includes the metatable as an extra hash attribute', function()

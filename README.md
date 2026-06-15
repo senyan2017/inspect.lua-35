@@ -37,7 +37,7 @@ assert(inspect({a=1,b=2}) == [[{
 }]])
 ```
 
-The keys will be sorted alphanumerically when possible.
+The keys will be sorted alphanumerically when possible (see [`options.sortKeys`](#optionssortkeys) to customize or disable this).
 
 "Hybrid" tables will have the array part on the first line, and the dictionary part just below them:
 
@@ -208,6 +208,35 @@ assert(inspect(info, {process = anonymize_password}) == [[{
   password = "XXXX",
   user     = "peter"
 }]])
+```
+
+#### options.sortKeys
+
+By default, `inspect` sorts the keys of dictionary-like tables so that the output is stable and easy to scan. `options.sortKeys` lets you control that behavior:
+
+* Leave it unset (or pass `true`) to keep the default ordering.
+* Pass a comparator `function(a, b)` to order the keys however you like. It is handed straight to `table.sort`, so it must return `true` when `a` should appear before `b`.
+* Pass `false` to disable sorting entirely and print the keys in their raw `pairs()` traversal order.
+
+```lua
+local t = {c = 3, a = 1, b = 2}
+
+-- default: keys are sorted alphanumerically
+assert(inspect(t) == [[{
+  a = 1,
+  b = 2,
+  c = 3
+}]])
+
+-- custom comparator: reverse order
+assert(inspect(t, {sortKeys = function(a, b) return a > b end}) == [[{
+  c = 3,
+  b = 2,
+  a = 1
+}]])
+
+-- disabled: keys are printed in their raw traversal order
+print(inspect(t, {sortKeys = false}))
 ```
 
 Gotchas / Warnings
