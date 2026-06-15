@@ -94,6 +94,8 @@ Notice that since both `a` appears more than once in the expression, it is prefi
 
 `inspect` has a second parameter, called `options`. It is not mandatory, but when it is provided, it must be a table.
 
+Each option is validated by its expected type as soon as `inspect` is called. Passing a value of the wrong type raises an error that names the offending option and the type it expected (for example, "bad option 'depth' to inspect (number expected, got string)"), rather than failing somewhere deep inside the formatter.
+
 #### options.depth
 
 `options.depth` sets the maximum depth that will be printed out.
@@ -121,11 +123,11 @@ assert(inspect(t5, {depth = 2}) == [[{
 
 ```
 
-`options.depth` defaults to infinite (`math.huge`).
+`options.depth` must be a number, and defaults to infinite (`math.huge`).
 
 #### options.newline & options.indent
 
-These are the strings used by `inspect` to respectively add a newline and indent each level of a table.
+These are the strings used by `inspect` to respectively add a newline and indent each level of a table. Both must be strings.
 
 By default, `options.newline` is `"\n"` and `options.indent` is `"  "` (two spaces).
 
@@ -143,7 +145,7 @@ assert(inspect(t, {newline='@', indent="++"}), "{@++a = {@++++b = 1@++}@}"
 
 #### options.process
 
-`options.process` is a function which allow altering the passed object before transforming it into a string.
+`options.process` is a function which allow altering the passed object before transforming it into a string. When provided, it must be a function.
 A typical way to use it would be to remove certain values so that they don't appear at all.
 
 `options.process` has the following signature:

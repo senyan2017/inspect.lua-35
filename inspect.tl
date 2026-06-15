@@ -54,6 +54,16 @@ local char = string.char
 local gsub = string.gsub
 local fmt = string.format
 
+-- Validates that an option has the expected Lua type, raising a clear,
+-- early error (naming the option and the expected type) when it does not.
+-- A nil value means "use the default", so it is always allowed.
+local function checkOption(name: string, value: any, expected: string)
+   if value ~= nil and type(value) ~= expected then
+      error(fmt("bad option '%s' to inspect (%s expected, got %s)",
+                name, expected, type(value)), 2)
+   end
+end
+
 -- String buffer support (LuaJIT optimization)
 local sbavailable, stringbuffer = pcall(require, "string.buffer")
 local buffnew: function(): table
@@ -339,7 +349,17 @@ end
 
 
 function inspect.inspect(root: any, options: inspect.Options): string
-   options       = options or {}
+   if options == nil then
+      options = {}
+   elseif type(options) ~= 'table' then
+      error(fmt("bad argument #2 to inspect (table expected, got %s)",
+                type(options)), 2)
+   end
+
+   checkOption('depth',   options.depth,   'number')
+   checkOption('newline', options.newline, 'string')
+   checkOption('indent',  options.indent,  'string')
+   checkOption('process', options.process, 'function')
 
    local depth: integer  = options.depth   or (math.huge as integer)
    local newline: string = options.newline or '\n'

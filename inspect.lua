@@ -55,6 +55,16 @@ local gsub = string.gsub
 local fmt = string.format
 
 
+
+
+local function checkOption(name, value, expected)
+   if value ~= nil and type(value) ~= expected then
+      error(fmt("bad option '%s' to inspect (%s expected, got %s)",
+      name, expected, type(value)), 2)
+   end
+end
+
+
 local sbavailable, stringbuffer = pcall(require, "string.buffer")
 local buffnew
 local puts
@@ -339,7 +349,17 @@ end
 
 
 function inspect.inspect(root, options)
-   options = options or {}
+   if options == nil then
+      options = {}
+   elseif type(options) ~= 'table' then
+      error(fmt("bad argument #2 to inspect (table expected, got %s)",
+      type(options)), 2)
+   end
+
+   checkOption('depth', options.depth, 'number')
+   checkOption('newline', options.newline, 'string')
+   checkOption('indent', options.indent, 'string')
+   checkOption('process', options.process, 'function')
 
    local depth = options.depth or (math.huge)
    local newline = options.newline or '\n'

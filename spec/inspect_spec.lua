@@ -461,6 +461,67 @@ describe( 'inspect', function()
     end)
   end)
 
+  describe('option validation', function()
+    local function expect_error(fn)
+      local ok, err = pcall(fn)
+      assert.is_false(ok, 'expected an error to be raised, but none was')
+      return tostring(err)
+    end
+
+    it('rejects a depth that is not a number', function()
+      local err = expect_error(function() inspect({1, 2, 3}, {depth = 'nope'}) end)
+      assert.is_truthy(err:find('depth', 1, true))
+      assert.is_truthy(err:find('number expected', 1, true))
+      assert.is_truthy(err:find('got string', 1, true))
+    end)
+
+    it('rejects a newline that is not a string', function()
+      local err = expect_error(function() inspect({a = 1}, {newline = 10}) end)
+      assert.is_truthy(err:find('newline', 1, true))
+      assert.is_truthy(err:find('string expected', 1, true))
+      assert.is_truthy(err:find('got number', 1, true))
+    end)
+
+    it('rejects an indent that is not a string', function()
+      local err = expect_error(function() inspect({a = 1}, {indent = 10}) end)
+      assert.is_truthy(err:find('indent', 1, true))
+      assert.is_truthy(err:find('string expected', 1, true))
+      assert.is_truthy(err:find('got number', 1, true))
+    end)
+
+    it('rejects a process that is not a function', function()
+      local err = expect_error(function() inspect({1, 2, 3}, {process = 'nope'}) end)
+      assert.is_truthy(err:find('process', 1, true))
+      assert.is_truthy(err:find('function expected', 1, true))
+      assert.is_truthy(err:find('got string', 1, true))
+    end)
+
+    it('rejects an options argument that is not a table', function()
+      local err = expect_error(function() inspect({1, 2, 3}, 'nope') end)
+      assert.is_truthy(err:find('table expected', 1, true))
+      assert.is_truthy(err:find('got string', 1, true))
+    end)
+
+    it('validates options when called through inspect.inspect directly', function()
+      local err = expect_error(function() inspect.inspect({1, 2, 3}, {depth = true}) end)
+      assert.is_truthy(err:find('depth', 1, true))
+      assert.is_truthy(err:find('number expected', 1, true))
+      assert.is_truthy(err:find('got boolean', 1, true))
+    end)
+
+    it('accepts valid boundary options without altering normal output', function()
+      -- omitted options fall back to the defaults
+      assert.equals('{ 1, 2, 3 }', inspect({1, 2, 3}))
+      -- both depth boundaries (zero and infinite) are valid numbers
+      assert.equals('{...}', inspect({1, 2, 3}, {depth = 0}))
+      assert.equals('{ 1, 2, 3 }', inspect({1, 2, 3}, {depth = math.huge}))
+      -- empty strings are still valid newline / indent values
+      assert.equals('{a = 1,b = 2}', inspect({a = 1, b = 2}, {newline = '', indent = ''}))
+      -- an identity process function is valid and leaves the output unchanged
+      assert.equals('{ 1, 2, 3 }', inspect({1, 2, 3}, {process = function(x) return x end}))
+    end)
+  end)
+
   it('allows changing the global tostring', function()
     local save = _G.tostring
     _G.tostring = inspect
