@@ -1,4 +1,19 @@
 -- inspect.tl
+--
+-- A human-readable representation of arbitrary Lua values.
+--
+-- The implementation is organised into a few clearly separated concerns so
+-- that adding or tweaking an option only touches one place:
+--
+--   * Buffer compatibility   -- where the output string is accumulated
+--   * Raw table access        -- rawget / rawpairs compatibility shims
+--   * Render helpers           -- pure helpers that format keys and values
+--   * Cycle counting           -- detecting tables that appear more than once
+--   * The `process` option     -- pre-walking the value with a user callback
+--   * Options normalization    -- turning the public Options into defaults
+--   * Rendering                -- the Inspector, which walks a value and emits
+--   * Public entry point       -- inspect.inspect / the callable module
+
 local record inspect
    _VERSION: string
    _URL: string
@@ -54,32 +69,48 @@ local char = string.char
 local gsub = string.gsub
 local fmt = string.format
 
--- String buffer support (LuaJIT optimization)
-local sbavailable, stringbuffer = pcall(require, "string.buffer")
-local buffnew: function(): table
-local puts: function(table, string)
-local render: function(table): string
+-------------------------------------------------------------------
+-- Buffer compatibility
+--
+-- Output is accumulated in a "buffer". On LuaJIT we use the native
+-- string.buffer (fast incremental concatenation); everywhere else we fall
+-- back to a plain table of chunks that is joined once at the end. Both
+-- back-ends expose the same trio of free functions, so the rest of the
+-- module never needs to know which one is active.
+-------------------------------------------------------------------
 
+local newBuffer: function(): table
+local puts: function(table, string)
+local bufferToString: function(table): string
+
+local sbavailable, stringbuffer = pcall(require, "string.buffer")
 if sbavailable then
-  buffnew = stringbuffer.new
+  newBuffer = stringbuffer.new
   puts = function(buf: table, str: string)
     buf:put(str)
   end
-  render = function(buf: table): string
+  bufferToString = function(buf: table): string
     return buf:get()
   end
 else
-  buffnew = function(): table
+  newBuffer = function(): table
     return { n = 0 }
   end
   puts = function(buf: table, str: string)
     buf.n = buf.n as integer + 1
     buf[buf.n as integer] = str
   end
-  render = function(buf: table): string
+  bufferToString = function(buf: table): string
     return table.concat(buf as {string})
   end
 end
+
+-------------------------------------------------------------------
+-- Raw table access compatibility
+--
+-- We always read tables raw (ignoring __index / __pairs / __len) so the
+-- output reflects what the table actually contains.
+-------------------------------------------------------------------
 
 local _rawget: function(table, any): any
 if rawget then
@@ -91,6 +122,13 @@ end
 local function rawpairs(t: table): function, table, nil
    return next, t, nil
 end
+
+-------------------------------------------------------------------
+-- Render helpers
+--
+-- Pure helpers that turn individual keys/values into their textual form and
+-- decide the order in which a table's keys are emitted.
+-------------------------------------------------------------------
 
 -- Apostrophizes the string if it has quotes, but not aphostrophes
 -- Otherwise, it returns a regular quoted string
@@ -181,6 +219,14 @@ local function getKeys(t: table): {any}, integer, integer
    return keys, keysLen, seqLen
 end
 
+-------------------------------------------------------------------
+-- Cycle counting
+--
+-- Walk the value once and record how many times each table is reachable.
+-- Tables seen more than once get a shared `<id>` marker during rendering so
+-- recursive / shared structures do not loop forever.
+-------------------------------------------------------------------
+
 local function countCycles(x: any, cycles: {any:integer}, depth: integer): nil
    if x is table then
       if cycles[x] then
@@ -198,6 +244,13 @@ local function countCycles(x: any, cycles: {any:integer}, depth: integer): nil
    end
 end
 
+-------------------------------------------------------------------
+-- The `process` option
+--
+-- When a `process` callback is supplied we build a transformed copy of the
+-- value before rendering, tracking the `path` taken to reach each item.
+-------------------------------------------------------------------
+
 local function makePath(path: {any}, a: any, b: any): {any}
    local newPath: {any} = {}
    local len: integer = #path
@@ -208,7 +261,6 @@ local function makePath(path: {any}, a: any, b: any): {any}
 
    return newPath
 end
-
 
 local function processRecursive(process: inspect.ProcessFunction,
                                 item: any,
@@ -239,6 +291,37 @@ local function processRecursive(process: inspect.ProcessFunction,
 end
 
 -------------------------------------------------------------------
+-- Options normalization
+--
+-- The public Options table is entirely optional and every field has a
+-- default. Resolving those defaults in one place keeps the entry point and
+-- the Inspector free of `or default` noise.
+-------------------------------------------------------------------
+
+local type NormalizedOptions = record
+   depth: integer
+   newline: string
+   indent: string
+   process: inspect.ProcessFunction
+end
+
+local function normalizeOptions(options: inspect.Options): NormalizedOptions
+   options = options or {}
+   return {
+      depth   = options.depth   or (math.huge as integer),
+      newline = options.newline or '\n',
+      indent  = options.indent  or '  ',
+      process = options.process,
+   }
+end
+
+-------------------------------------------------------------------
+-- Rendering
+--
+-- The Inspector owns the mutable state of a single render pass (the output
+-- buffer, the current depth/level, the per-type id counter and the cycle
+-- table) and exposes the methods that walk a value and emit its text.
+-------------------------------------------------------------------
 
 local type Inspector = record
    buf: table
@@ -248,13 +331,24 @@ local type Inspector = record
    newline: string
    indent: string
    cycles: {table: integer}
-   puts: function(string)
 end
 
 local Inspector_mt = {__index = Inspector}
 
-local function tabify(inspector: Inspector)
-   puts(inspector.buf, inspector.newline .. rep(inspector.indent, inspector.level))
+local function newInspector(opts: NormalizedOptions, cycles: {table:integer}): Inspector
+   return setmetatable({
+      buf              = newBuffer(),
+      ids              = {},
+      cycles           = cycles,
+      depth            = opts.depth,
+      level            = 0,
+      newline          = opts.newline,
+      indent           = opts.indent,
+   } as Inspector, Inspector_mt)
+end
+
+function Inspector:tabify()
+   puts(self.buf, self.newline .. rep(self.indent, self.level))
 end
 
 function Inspector:getId(v: any): string
@@ -298,7 +392,7 @@ function Inspector:putValue(v: any)
                self:putValue(t[i])
             else
                local k = keys[i - seqLen]
-               tabify(self)
+               self:tabify()
                if isIdentifier(k) then
                  puts(buf, k as string)
                else
@@ -314,7 +408,7 @@ function Inspector:putValue(v: any)
          local mt = getmetatable(t)
          if type(mt) == 'table' then
            if seqLen + keysLen > 0 then puts(buf, ',') end
-           tabify(self)
+           self:tabify()
            puts(buf, '<metatable> = ')
            self:putValue(mt)
          end
@@ -322,7 +416,7 @@ function Inspector:putValue(v: any)
          self.level = self.level - 1
 
          if keysLen > 0 or type(mt) == 'table' then -- result is multi-lined. Justify closing }
-           tabify(self)
+           self:tabify()
          elseif seqLen > 0 then -- array tables have one extra space before closing }
            puts(buf, ' ')
          end
@@ -336,36 +430,24 @@ function Inspector:putValue(v: any)
 end
 
 -------------------------------------------------------------------
-
+-- Public entry point
+-------------------------------------------------------------------
 
 function inspect.inspect(root: any, options: inspect.Options): string
-   options       = options or {}
+   local opts = normalizeOptions(options)
 
-   local depth: integer  = options.depth   or (math.huge as integer)
-   local newline: string = options.newline or '\n'
-   local indent: string  = options.indent  or '  '
-   local process: inspect.ProcessFunction = options.process
-
-   if process then
-      root = processRecursive(process, root, {}, {})
+   if opts.process then
+      root = processRecursive(opts.process, root, {}, {})
    end
 
    local cycles = {}
-   countCycles(root, cycles, depth)
+   countCycles(root, cycles, opts.depth)
 
-   local inspector = setmetatable({
-      buf              = buffnew(),
-      ids              = {},
-      cycles           = cycles,
-      depth            = depth,
-      level            = 0,
-      newline          = newline,
-      indent           = indent,
-   } as Inspector, Inspector_mt)
+   local inspector = newInspector(opts, cycles)
 
    inspector:putValue(root)
 
-   return render(inspector.buf)
+   return bufferToString(inspector.buf)
 end
 
 setmetatable(inspect, {

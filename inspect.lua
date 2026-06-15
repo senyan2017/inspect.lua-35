@@ -1,4 +1,19 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local math = _tl_compat and _tl_compat.math or math; local pcall = _tl_compat and _tl_compat.pcall or pcall; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local type = type
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 local inspect = { Options = {} }
 
 
@@ -55,31 +70,47 @@ local gsub = string.gsub
 local fmt = string.format
 
 
-local sbavailable, stringbuffer = pcall(require, "string.buffer")
-local buffnew
-local puts
-local render
 
+
+
+
+
+
+
+
+
+local newBuffer
+local puts
+local bufferToString
+
+local sbavailable, stringbuffer = pcall(require, "string.buffer")
 if sbavailable then
-   buffnew = stringbuffer.new
+   newBuffer = stringbuffer.new
    puts = function(buf, str)
       buf:put(str)
    end
-   render = function(buf)
+   bufferToString = function(buf)
       return buf:get()
    end
 else
-   buffnew = function()
+   newBuffer = function()
       return { n = 0 }
    end
    puts = function(buf, str)
       buf.n = buf.n + 1
       buf[buf.n] = str
    end
-   render = function(buf)
+   bufferToString = function(buf)
       return table.concat(buf)
    end
 end
+
+
+
+
+
+
+
 
 local _rawget
 if rawget then
@@ -91,6 +122,13 @@ end
 local function rawpairs(t)
    return next, t, nil
 end
+
+
+
+
+
+
+
 
 
 
@@ -181,6 +219,14 @@ local function getKeys(t)
    return keys, keysLen, seqLen
 end
 
+
+
+
+
+
+
+
+
 local function countCycles(x, cycles, depth)
    if type(x) == "table" then
       if cycles[x] then
@@ -198,6 +244,13 @@ local function countCycles(x, cycles, depth)
    end
 end
 
+
+
+
+
+
+
+
 local function makePath(path, a, b)
    local newPath = {}
    local len = #path
@@ -208,7 +261,6 @@ local function makePath(path, a, b)
 
    return newPath
 end
-
 
 local function processRecursive(process,
    item,
@@ -240,8 +292,38 @@ end
 
 
 
-local Inspector = {}
 
+
+
+
+
+
+
+
+
+
+
+
+
+local function normalizeOptions(options)
+   options = options or {}
+   return {
+      depth = options.depth or (math.huge),
+      newline = options.newline or '\n',
+      indent = options.indent or '  ',
+      process = options.process,
+   }
+end
+
+
+
+
+
+
+
+
+
+local Inspector = {}
 
 
 
@@ -253,8 +335,20 @@ local Inspector = {}
 
 local Inspector_mt = { __index = Inspector }
 
-local function tabify(inspector)
-   puts(inspector.buf, inspector.newline .. rep(inspector.indent, inspector.level))
+local function newInspector(opts, cycles)
+   return setmetatable({
+      buf = newBuffer(),
+      ids = {},
+      cycles = cycles,
+      depth = opts.depth,
+      level = 0,
+      newline = opts.newline,
+      indent = opts.indent,
+   }, Inspector_mt)
+end
+
+function Inspector:tabify()
+   puts(self.buf, self.newline .. rep(self.indent, self.level))
 end
 
 function Inspector:getId(v)
@@ -298,7 +392,7 @@ function Inspector:putValue(v)
                self:putValue(t[i])
             else
                local k = keys[i - seqLen]
-               tabify(self)
+               self:tabify()
                if isIdentifier(k) then
                   puts(buf, k)
                else
@@ -314,7 +408,7 @@ function Inspector:putValue(v)
          local mt = getmetatable(t)
          if type(mt) == 'table' then
             if seqLen + keysLen > 0 then puts(buf, ',') end
-            tabify(self)
+            self:tabify()
             puts(buf, '<metatable> = ')
             self:putValue(mt)
          end
@@ -322,7 +416,7 @@ function Inspector:putValue(v)
          self.level = self.level - 1
 
          if keysLen > 0 or type(mt) == 'table' then
-            tabify(self)
+            self:tabify()
          elseif seqLen > 0 then
             puts(buf, ' ')
          end
@@ -338,34 +432,22 @@ end
 
 
 
+
 function inspect.inspect(root, options)
-   options = options or {}
+   local opts = normalizeOptions(options)
 
-   local depth = options.depth or (math.huge)
-   local newline = options.newline or '\n'
-   local indent = options.indent or '  '
-   local process = options.process
-
-   if process then
-      root = processRecursive(process, root, {}, {})
+   if opts.process then
+      root = processRecursive(opts.process, root, {}, {})
    end
 
    local cycles = {}
-   countCycles(root, cycles, depth)
+   countCycles(root, cycles, opts.depth)
 
-   local inspector = setmetatable({
-      buf = buffnew(),
-      ids = {},
-      cycles = cycles,
-      depth = depth,
-      level = 0,
-      newline = newline,
-      indent = indent,
-   }, Inspector_mt)
+   local inspector = newInspector(opts, cycles)
 
    inspector:putValue(root)
 
-   return render(inspector.buf)
+   return bufferToString(inspector.buf)
 end
 
 setmetatable(inspect, {

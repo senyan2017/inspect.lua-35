@@ -251,6 +251,20 @@ describe( 'inspect', function()
           }
         ]]), inspect(keys, {depth = 4}))
       end)
+
+      it('combines a depth limit with cyclic references', function()
+        local a = { 1, 2 }
+        a.self = a
+        a.deep = { x = { y = 1 } }
+        assert.equals(unindent([[
+          <1>{ 1, 2,
+            deep = {
+              x = {...}
+            },
+            self = <table 1>
+          }
+        ]]), inspect(a, {depth = 2}))
+      end)
     end)
 
     describe('the newline option', function()
@@ -266,6 +280,14 @@ describe( 'inspect', function()
         local t = {a={b=1}}
 
         assert.equal("{\n>>>a = {\n>>>>>>b = 1\n>>>}\n}", inspect(t, {indent='>>>'}))
+      end)
+    end)
+
+    describe('the newline and indent options combined', function()
+      it('uses both substrings together when rendering nested tables', function()
+        local t = {a={b=1}}
+
+        assert.equal("{@>>a = {@>>>>b = 1@>>}@}", inspect(t, {newline='@', indent='>>'}))
       end)
     end)
 
