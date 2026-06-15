@@ -337,9 +337,39 @@ end
 
 -------------------------------------------------------------------
 
+local function checkOptions(options: any): inspect.Options
+   if options == nil then
+      return {}
+   end
+   if type(options) ~= 'table' then
+      error("inspect options must be a table or nil, got " .. type(options), 3)
+   end
+
+   local depth = options.depth
+   if depth ~= nil and type(depth) ~= 'number' then
+      error("inspect options.depth must be a number or nil, got " .. type(depth), 3)
+   end
+
+   local indent = options.indent
+   if indent ~= nil and type(indent) ~= 'string' then
+      error("inspect options.indent must be a string or nil, got " .. type(indent), 3)
+   end
+
+   local newline = options.newline
+   if newline ~= nil and type(newline) ~= 'string' then
+      error("inspect options.newline must be a string or nil, got " .. type(newline), 3)
+   end
+
+   local process = options.process
+   if process ~= nil and type(process) ~= 'function' then
+      error("inspect options.process must be a function or nil, got " .. type(process), 3)
+   end
+
+   return options
+end
 
 function inspect.inspect(root: any, options: inspect.Options): string
-   options       = options or {}
+   options       = checkOptions(options)
 
    local depth: integer  = options.depth   or (math.huge as integer)
    local newline: string = options.newline or '\n'
