@@ -147,7 +147,7 @@ local defaultTypeOrders = {
    ['function'] = 5, ['userdata'] = 6, ['thread'] = 7,
 }
 
-local function sortKeys(a, b)
+local function defaultSortKeys(a, b)
    local ta, tb = type(a), type(b)
 
 
@@ -162,7 +162,7 @@ local function sortKeys(a, b)
    return dta == dtb and ta < tb or dta < dtb
 end
 
-local function getKeys(t)
+local function getKeys(t, sortKeysOpt)
 
    local seqLen = 1
    while _rawget(t, seqLen) ~= nil do
@@ -177,7 +177,13 @@ local function getKeys(t)
          keys[keysLen] = k
       end
    end
-   table.sort(keys, sortKeys)
+   if sortKeysOpt ~= false then
+      local cmp = defaultSortKeys
+      if type(sortKeysOpt) == 'function' then
+         cmp = sortKeysOpt
+      end
+      table.sort(keys, cmp)
+   end
    return keys, keysLen, seqLen
 end
 
@@ -286,7 +292,7 @@ function Inspector:putValue(v)
       else
          if self.cycles[t] > 1 then puts(buf, fmt('<%d>', self:getId(t))) end
 
-         local keys, keysLen, seqLen = getKeys(t)
+         local keys, keysLen, seqLen = getKeys(t, self.sortKeys)
 
          puts(buf, '{')
          self.level = self.level + 1
@@ -345,6 +351,10 @@ function inspect.inspect(root, options)
    local newline = options.newline or '\n'
    local indent = options.indent or '  '
    local process = options.process
+   local sortKeysOpt = true
+   if options.sortKeys ~= nil then
+      sortKeysOpt = options.sortKeys
+   end
 
    if process then
       root = processRecursive(process, root, {}, {})
@@ -361,6 +371,7 @@ function inspect.inspect(root, options)
       level = 0,
       newline = newline,
       indent = indent,
+      sortKeys = sortKeysOpt,
    }, Inspector_mt)
 
    inspector:putValue(root)

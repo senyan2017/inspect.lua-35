@@ -359,6 +359,167 @@ describe( 'inspect', function()
       end)
     end)
 
+    describe('the sortKeys option', function()
+
+      it('sorts keys by default (no option provided)', function()
+        local t = {b = 2, a = 1, c = 3}
+        assert.equals(unindent([[
+          {
+            a = 1,
+            b = 2,
+            c = 3
+          }
+        ]]), inspect(t))
+      end)
+
+      it('sorts keys by default when sortKeys = true', function()
+        local t = {b = 2, a = 1, c = 3}
+        assert.equals(unindent([[
+          {
+            a = 1,
+            b = 2,
+            c = 3
+          }
+        ]]), inspect(t, {sortKeys = true}))
+      end)
+
+      it('disables key sorting when sortKeys = false', function()
+        -- We cannot predict the iteration order of Lua tables, but we can
+        -- verify the output contains all keys and is a valid representation.
+        local t = {c = 3, a = 1, b = 2}
+        local result = inspect(t, {sortKeys = false})
+        -- The output must contain all keys and values
+        assert.truthy(result:find('a = 1'))
+        assert.truthy(result:find('b = 2'))
+        assert.truthy(result:find('c = 3'))
+        -- It should NOT necessarily be in alphabetical order
+        -- (it might be, depending on Lua internals, but we don't enforce it)
+      end)
+
+      it('uses a custom comparator when sortKeys is a function', function()
+        -- Reverse alphabetical order for string keys
+        local reverseSort = function(a, b)
+          if type(a) == 'string' and type(b) == 'string' then
+            return a > b
+          end
+          return type(a) < type(b)
+        end
+        local t = {a = 1, c = 3, b = 2}
+        assert.equals(unindent([[
+          {
+            c = 3,
+            b = 2,
+            a = 1
+          }
+        ]]), inspect(t, {sortKeys = reverseSort}))
+      end)
+
+      it('works with nested tables', function()
+        local t = {b = {d = 4, c = 3}, a = {f = 6, e = 5}}
+        -- Default sort: alphabetical at all levels
+        assert.equals(unindent([[
+          {
+            a = {
+              e = 5,
+              f = 6
+            },
+            b = {
+              c = 3,
+              d = 4
+            }
+          }
+        ]]), inspect(t))
+
+        -- Disabled sort: keys appear in hash order
+        local result = inspect(t, {sortKeys = false})
+        assert.truthy(result:find('a = {'))
+        assert.truthy(result:find('b = {'))
+        assert.truthy(result:find('e = 5'))
+        assert.truthy(result:find('f = 6'))
+        assert.truthy(result:find('c = 3'))
+        assert.truthy(result:find('d = 4'))
+      end)
+
+      it('works with hybrid tables and sortKeys = false', function()
+        local t = {1, 2, 3, c = 3, a = 1, b = 2}
+        local result = inspect(t, {sortKeys = false})
+        -- Array part always comes first
+        assert.truthy(result:find('1, 2, 3'))
+        -- All keys must be present
+        assert.truthy(result:find('a = 1'))
+        assert.truthy(result:find('b = 2'))
+        assert.truthy(result:find('c = 3'))
+      end)
+
+      it('works with hybrid tables and custom sortKeys function', function()
+        -- Sort string keys in reverse
+        local reverseSort = function(a, b)
+          if type(a) == 'string' and type(b) == 'string' then
+            return a > b
+          end
+          return type(a) < type(b)
+        end
+        local t = {1, 2, 3, a = 1, c = 3, b = 2}
+        assert.equals(unindent([[
+          { 1, 2, 3,
+            c = 3,
+            b = 2,
+            a = 1
+          }
+        ]]), inspect(t, {sortKeys = reverseSort}))
+      end)
+
+      it('works together with the depth option', function()
+        local t = {b = {d = {e = 5}}, a = {c = {f = 6}}}
+        -- Reverse sort + depth 2
+        local reverseSort = function(a, b)
+          if type(a) == 'string' and type(b) == 'string' then
+            return a > b
+          end
+          return type(a) < type(b)
+        end
+        assert.equals(unindent([[
+          {
+            b = {
+              d = {...}
+            },
+            a = {
+              c = {...}
+            }
+          }
+        ]]), inspect(t, {sortKeys = reverseSort, depth = 2}))
+      end)
+
+      it('works together with the process option', function()
+        local t = {b = 2, a = 1, c = 3}
+        local removeB = function(item) if item ~= 'b' and item ~= 2 then return item end end
+        -- Reverse sort + process removing b
+        local reverseSort = function(a, b)
+          if type(a) == 'string' and type(b) == 'string' then
+            return a > b
+          end
+          return type(a) < type(b)
+        end
+        assert.equals(unindent([[
+          {
+            c = 3,
+            a = 1
+          }
+        ]]), inspect(t, {sortKeys = reverseSort, process = removeB}))
+      end)
+
+      it('works together with the indent option', function()
+        local t = {b = 2, a = 1}
+        local reverseSort = function(a, b)
+          if type(a) == 'string' and type(b) == 'string' then
+            return a > b
+          end
+          return type(a) < type(b)
+        end
+        assert.equals("{\n>>>b = 2,\n>>>a = 1\n}", inspect(t, {sortKeys = reverseSort, indent = '>>>'}))
+      end)
+    end)
+
     describe('metatables', function()
 
       it('includes the metatable as an extra hash attribute', function()

@@ -210,6 +210,39 @@ assert(inspect(info, {process = anonymize_password}) == [[{
 }]])
 ```
 
+#### options.sortKeys
+
+`options.sortKeys` controls how dictionary keys are sorted in the output. By default, keys are sorted by type (numbers first, then booleans, strings, tables, etc.) and then alphabetically within each type.
+
+* `true` (default): sort keys using the built-in comparator
+* `false`: disable sorting; keys appear in the order Lua iterates them (not guaranteed to be insertion order)
+* `function(a, b)`: a custom comparator receiving two keys; must return `true` if `a` should come before `b`
+
+```lua
+local t = {b = 2, a = 1, c = 3}
+
+-- Default (sorted):
+assert(inspect(t) == [[{
+  a = 1,
+  b = 2,
+  c = 3
+}]])
+
+-- Disabled sorting (order depends on Lua internals):
+inspect(t, {sortKeys = false})
+
+-- Custom reverse-alphabetical sort:
+local reverse = function(a, b)
+  if type(a) == 'string' and type(b) == 'string' then return a > b end
+  return type(a) < type(b)
+end
+assert(inspect(t, {sortKeys = reverse}) == [[{
+  c = 3,
+  b = 2,
+  a = 1
+}]])
+```
+
 Gotchas / Warnings
 ==================
 

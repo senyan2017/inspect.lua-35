@@ -8,12 +8,14 @@ local record inspect
    METATABLE: table
 
    type ProcessFunction = function(any, {any}): any
+   type SortKeysFunction = function(any, any): boolean
 
    record Options
       depth: integer
       newline: string
       indent: string
       process: ProcessFunction
+      sortKeys: boolean | SortKeysFunction
    end
 end
 
@@ -147,7 +149,7 @@ local defaultTypeOrders: {string:integer} = {
    ['function'] = 5, ['userdata'] = 6, ['thread'] = 7
 }
 
-local function sortKeys(a:any, b:any): boolean
+local function defaultSortKeys(a:any, b:any): boolean
    local ta, tb: string, string = type(a), type(b)
 
    -- strings and numbers are sorted numerically/alphabetically
@@ -162,7 +164,7 @@ local function sortKeys(a:any, b:any): boolean
    return dta == dtb and ta < tb or dta < dtb
 end
 
-local function getKeys(t: table): {any}, integer, integer
+local function getKeys(t: table, sortKeysOpt: boolean | inspect.SortKeysFunction): {any}, integer, integer
    -- seqLen counts the "array-like" keys
    local seqLen: integer = 1
    while _rawget(t, seqLen) ~= nil do
@@ -177,7 +179,13 @@ local function getKeys(t: table): {any}, integer, integer
          keys[keysLen] = k
       end
    end
-   table.sort(keys, sortKeys)
+   if sortKeysOpt ~= false then
+      local cmp: function(any, any): boolean = defaultSortKeys
+      if type(sortKeysOpt) == 'function' then
+         cmp = sortKeysOpt as function(any, any): boolean
+      end
+      table.sort(keys, cmp)
+   end
    return keys, keysLen, seqLen
 end
 
@@ -248,6 +256,7 @@ local type Inspector = record
    newline: string
    indent: string
    cycles: {table: integer}
+   sortKeys: boolean | inspect.SortKeysFunction
    puts: function(string)
 end
 
@@ -286,7 +295,7 @@ function Inspector:putValue(v: any)
       else
          if self.cycles[t] > 1 then puts(buf, fmt('<%d>', self:getId(t))) end
 
-         local keys, keysLen, seqLen = getKeys(t)
+         local keys, keysLen, seqLen = getKeys(t, self.sortKeys)
 
          puts(buf, '{')
          self.level = self.level + 1
@@ -345,6 +354,10 @@ function inspect.inspect(root: any, options: inspect.Options): string
    local newline: string = options.newline or '\n'
    local indent: string  = options.indent  or '  '
    local process: inspect.ProcessFunction = options.process
+   local sortKeysOpt: boolean | inspect.SortKeysFunction = true
+   if options.sortKeys ~= nil then
+      sortKeysOpt = options.sortKeys
+   end
 
    if process then
       root = processRecursive(process, root, {}, {})
@@ -361,6 +374,7 @@ function inspect.inspect(root: any, options: inspect.Options): string
       level            = 0,
       newline          = newline,
       indent           = indent,
+      sortKeys         = sortKeysOpt,
    } as Inspector, Inspector_mt)
 
    inspector:putValue(root)
